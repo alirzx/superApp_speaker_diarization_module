@@ -1,0 +1,54 @@
+name: superapp-speaker-diarization
+services:
+  api:
+    build: {context: ., dockerfile: backend/Dockerfile}
+    image: superapp-speaker-diarization-api:local
+    restart: unless-stopped
+    init: true
+    read_only: true
+    user: app
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      API_TOKEN: ${API_TOKEN:-}
+      CPU_THREADS: ${CPU_THREADS:-2}
+      OMP_NUM_THREADS: ${CPU_THREADS:-2}
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      MAX_CONCURRENT_INFERENCE: ${MAX_CONCURRENT_INFERENCE:-1}
+      MAX_QUEUE_WAIT_SECONDS: ${MAX_QUEUE_WAIT_SECONDS:-10}
+      INFERENCE_TIMEOUT_SECONDS: ${INFERENCE_TIMEOUT_SECONDS:-600}
+      MAX_AUDIO_SECONDS: ${MAX_AUDIO_SECONDS:-300}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
+    volumes: [model_cache:/models:ro]
+    tmpfs: [/tmp:rw,nosuid,nodev,size=128m,uid=10001,gid=10001,mode=0700]
+    ports: ["${API_BIND_IP:-127.0.0.1}:${API_PORT:-8002}:8000"]
+    cpus: ${API_CPUS:-2.0}
+    mem_limit: ${API_MEMORY:-1500m}
+    pids_limit: 128
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    networks: [internal]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health/ready',timeout=5)"]
+      interval: 30s
+      timeout: 8s
+      start_period: 120s
+      retries: 3
+  ui:
+    build: {context: ., dockerfile: frontend/Dockerfile}
+    image: superapp-speaker-diarization-ui:local
+    restart: unless-stopped
+    depends_on: {api: {condition: service_healthy}}
+    environment: {API_TOKEN: "${API_TOKEN:-}"}
+    ports: ["${UI_BIND_IP:-127.0.0.1}:${UI_PORT:-8083}:8080"]
+    read_only: true
+    tmpfs: [/etc/nginx/conf.d:rw,size=1m, /var/cache/nginx:rw,size=16m, /var/run:rw,size=4m, /tmp:rw,size=8m]
+    networks: [internal]
+  model-setup:
+    profiles: [setup]
+    build: {context: ., dockerfile: backend/Dockerfile.setup}
+    environment: {MODEL_DIR: /models, HF_HOME: /models/.cache}
+    volumes: [model_cache:/models]
+    networks: [internal]
+networks: {internal: {driver: bridge}}
+volumes: {model_cache: {}}

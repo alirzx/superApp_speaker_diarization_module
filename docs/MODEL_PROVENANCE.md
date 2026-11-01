@@ -1,0 +1,2 @@
+# Model provenance
+Model: nvidia/Nemotron-3-Diarization, revision `f667ed73aee57d40cc39428eb768b4fd87a0a29e`; file `Nemotron-3-Diarization.q8_0.gguf`; size 107012128; SHA256 `08456d9e22cd9a323c0364d98375f3746d6e68507ebb705cd46438c534c7a3a1`. License NVIDIA OpenMDW-1.1. Runtime NVIDIA NeMo-Speech.cpp commit `20999cc921d2b14aa58708f61756a8b2e787ba20` (Apache-2.0 source). Verify redistribution and dependencies before commercial release.
