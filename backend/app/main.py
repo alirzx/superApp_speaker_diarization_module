@@ -1,7 +1,7 @@
 import asyncio,hmac,logging,tempfile,time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import Depends,FastAPI,File,Form,Header,HTTPException,UploadFile
+from fastapi import Depends,FastAPI,File,Form,Header,HTTPException,UploadFile,Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse,PlainTextResponse,Response
 from prometheus_client import Counter,Histogram,generate_latest,CONTENT_TYPE_LATEST
@@ -26,8 +26,18 @@ def create_app(settings=None,engine_factory=NemotronEngine):
         app.state.engine=None
     app=FastAPI(title='SuperApp Speaker Diarization',version='0.1.0',docs_url='/docs' if settings.environment!='production' else None,redoc_url=None,lifespan=lifespan)
     @app.middleware('http')
-    async def headers(request,call_next):
-        res=await call_next(request);res.headers['Cache-Control']='no-store';res.headers['X-Content-Type-Options']='nosniff';return res
+    async def headers(request: Request,call_next):
+        if request.method=='POST' and request.url.path.startswith('/v1/'):
+            value=request.headers.get('content-length')
+            if value is not None:
+                try: length=int(value)
+                except ValueError: return JSONResponse(status_code=400,content={'detail':'Invalid Content-Length'})
+                if length<0 or length>settings.max_upload_mb*1048576+1048576:
+                    return JSONResponse(status_code=413,content={'detail':'Request too large'})
+        res=await call_next(request)
+        res.headers['Cache-Control']='no-store'
+        res.headers['X-Content-Type-Options']='nosniff'
+        return res
     def auth(x_api_key:str|None=Header(None)):
         if settings.api_token and not hmac.compare_digest(x_api_key or '',settings.api_token):raise HTTPException(401,'Invalid API key')
     @app.get('/health/live')

@@ -40,6 +40,11 @@ services:
     restart: unless-stopped
     depends_on: {api: {condition: service_healthy}}
     environment: {API_TOKEN: "${API_TOKEN:-}"}
+    cpus: ${UI_CPUS:-0.5}
+    mem_limit: ${UI_MEMORY:-256m}
+    pids_limit: 64
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
     ports: ["${UI_BIND_IP:-127.0.0.1}:${UI_PORT:-8083}:8080"]
     read_only: true
     tmpfs: [/etc/nginx/conf.d:rw,size=1m, /var/cache/nginx:rw,size=16m, /var/run:rw,size=4m, /tmp:rw,size=8m]
