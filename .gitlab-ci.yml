@@ -1,0 +1,14 @@
+stages: [test, frontend]
+python-tests:
+  stage: test
+  image: python:3.11-slim
+  script:
+    - pip install -r backend/requirements-dev.txt
+    - PYTHONPATH=backend pytest -q backend/tests
+frontend-build:
+  stage: frontend
+  image: node:22-alpine
+  script:
+    - cd frontend
+    - npm install --no-audit --no-fund
+    - npm run build
