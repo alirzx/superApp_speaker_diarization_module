@@ -1,0 +1,2 @@
+# Test plan
+Unit: segments including overlaps, invalid labels/bounds, token auth, upload extension and byte cap, model manifest validation, queues. Integration: Persian-English, 1-8 speakers, noise, interruptions and overlap, malformed input. Release gate: DER under shared scoring protocol, RTF, p95 wall time, peak RSS and concurrent load. Tests with mocked model must not be reported as real inference benchmarks.

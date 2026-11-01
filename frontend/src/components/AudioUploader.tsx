@@ -1,0 +1,1 @@
+export default function AudioUploader({file,onFile}:{file:File|null;onFile:(f:File)=>void}){return <label className="drop">{file?file.name:'فایل صوتی را انتخاب کنید'}<small>WAV / MP3 / FLAC / M4A / OGG / OPUS</small><input type="file" accept=".wav,.mp3,.flac,.m4a,.ogg,.opus" onChange={e=>{const f=e.target.files?.[0];if(f)onFile(f)}}/></label>}

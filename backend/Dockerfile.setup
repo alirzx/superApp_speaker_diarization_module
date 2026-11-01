@@ -1,0 +1,6 @@
+FROM python:3.11-slim-bookworm
+RUN pip install --no-cache-dir huggingface-hub==0.34.4
+COPY backend/app /app/app
+COPY backend/scripts/prepare_models.py /app/setup.py
+WORKDIR /app
+CMD ["python","setup.py"]

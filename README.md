@@ -1,16 +1,21 @@
 # SuperApp Speaker Diarization
 
-CPU-first standalone speaker diarization for Persian and English audio using NVIDIA Nemotron 3 Diarization and the native NeMo-Speech.cpp CLI.
+CPU-first standalone multilingual speaker diarization (Persian and English) using **NVIDIA Nemotron 3 Diarization**, **NeMo-Speech.cpp** and a React UI.
 
-## Development status
+**Status:** implemented code and lightweight tests; real native model build, live inference, Persian DER, production load and commercial review must still be validated. Speaker labels identify recording-local turns, not real people.
 
-The implementation source bundle has been assembled and mock-based Python tests passed, but **the complete source bundle has not yet been pushed to this GitHub repository**. Native model download, CPU build, real-audio inference, frontend build and production deployment have not been verified. Do not treat this repository as production-ready.
+## Quick start
 
-## Planned integration
+```bash
+cp .env.example .env
+make model
+make build
+make up
+curl http://127.0.0.1:8002/health/ready
+```
 
-- FastAPI POST /v1/diarize, GET /health/live, GET /health/ready, GET /v1/models and GET /metrics.
-- React + TypeScript frontend with speaker timeline and JSON/RTTM export.
-- CPU-only native CLI, pinned NVIDIA model revision and SHA256, dedicated model setup container.
-- Docker Compose, GitLab CI, tests, resource limits, bounded uploads and private serving.
+UI: http://127.0.0.1:8083. API: `POST /v1/diarize` with multipart `file`, optional `output_format=json|rttm`. See docs/.
 
-Model: nvidia/Nemotron-3-Diarization; revision f667ed73aee57d40cc39428eb768b4fd87a0a29e; GGUF SHA256 08456d9e22cd9a323c0364d98375f3746d6e68507ebb705cd46438c534c7a3a1.
+## Security
+
+The API token must be set for production; do not expose the UI to untrusted networks without an identity-aware gateway and TLS. Runtime never downloads model weights. Audio is treated as confidential, with temporary storage and bounded uploads.
