@@ -20,7 +20,8 @@ services:
       MAX_AUDIO_SECONDS: ${MAX_AUDIO_SECONDS:-300}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
     volumes: [model_cache:/models:ro]
-    tmpfs: [/tmp:rw,nosuid,nodev,size=128m,uid=10001,gid=10001,mode=0700]
+    tmpfs:
+      - /tmp:size=128m,mode=0700,uid=10001,gid=10001
     ports: ["${API_BIND_IP:-127.0.0.1}:${API_PORT:-8003}:8000"]
     cpus: ${API_CPUS:-2.0}
     mem_limit: ${API_MEMORY:-1500m}
@@ -47,7 +48,11 @@ services:
     cap_drop: [ALL]
     ports: ["${UI_BIND_IP:-127.0.0.1}:${UI_PORT:-8084}:8080"]
     read_only: true
-    tmpfs: [/etc/nginx/conf.d:rw,size=1m, /var/cache/nginx:rw,size=16m, /var/run:rw,size=4m, /tmp:rw,size=8m]
+    tmpfs:
+      - /etc/nginx/conf.d:size=1m
+      - /var/cache/nginx:size=16m
+      - /var/run:size=4m
+      - /tmp:size=8m
     networks: [internal]
   model-setup:
     profiles: [setup]
