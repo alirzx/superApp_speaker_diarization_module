@@ -1,21 +1,43 @@
-deploy:
+# Included by .gitlab-ci.yml. Requires protected File-type CI/CD variables:
+# SSH_PRIVATE_KEY_FILE, SSH_KNOWN_HOSTS, ENV_FILE.
+# SSH_USER, SSH_PORT, VM_IPADDRESS are ordinary protected variables.
+# The server checkout must already exist and be able to fetch GitLab origin/main.
+deploy-production:
   stage: deploy
-  before_script:
-  - 'command -v ssh-agent >/dev/null || ( apk add --update openssh )' 
-  - eval $(ssh-agent -s)
-  - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
-  - - ssh-add -l
-  - mkdir -p ~/.ssh
-  - chmod 700 ~/.ssh
-  - ssh-keyscan -p $SSH_PORT $VM_IPADDRESS >> ~/.ssh/known_hosts
-  - chmod 644 ~/.ssh/known_hosts
-  script:
-    - echo $SSH_USER
-    - scp -P "$SSH_PORT" "$ENV_FILE" "$SSH_USER@$VM_IPADDRESS:/opt/apps/ai-service/speaker_diarization_module/.env"
-    - ssh $SSH_USER@$VM_IPADDRESS -p ${SSH_PORT} "cd /opt/apps/ai-service/speaker_diarization_module && git pull origin master && docker compose up --build -d"
-  only:
-    - master
   tags:
     - linux
     - bina
     - shell
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      when: manual
+      allow_failure: true
+    - when: never
+  resource_group: speaker-diarization-production
+  environment:
+    name: production
+  script:
+    - |
+      set -eu
+      : "${SSH_PRIVATE_KEY_FILE:?Missing SSH_PRIVATE_KEY_FILE (File variable)}"
+      : "${SSH_KNOWN_HOSTS:?Missing SSH_KNOWN_HOSTS (File variable)}"
+      : "${ENV_FILE:?Missing ENV_FILE (File variable)}"
+      : "${SSH_USER:?Missing SSH_USER}"
+      : "${VM_IPADDRESS:?Missing VM_IPADDRESS}"
+      : "${SSH_PORT:?Missing SSH_PORT}"
+      test -f "$SSH_PRIVATE_KEY_FILE"
+      test -f "$SSH_KNOWN_HOSTS"
+      test -f "$ENV_FILE"
+      chmod 600 "$SSH_PRIVATE_KEY_FILE"
+      install -d -m 700 "$HOME/.ssh"
+      cp "$SSH_KNOWN_HOSTS" "$HOME/.ssh/known_hosts"
+      chmod 600 "$HOME/.ssh/known_hosts"
+      target="${SSH_USER}@${VM_IPADDRESS}"
+      remote_dir="/opt/apps/ai-service/speaker_diarization_module"
+      # Keep existing files in place if the remote update fails.
+      ssh -p "$SSH_PORT" -i "$SSH_PRIVATE_KEY_FILE" -o StrictHostKeyChecking=yes "$target" \
+        "cd '$remote_dir' && git fetch origin main && git switch main && git merge --ff-only origin/main"
+      scp -P "$SSH_PORT" -i "$SSH_PRIVATE_KEY_FILE" -o StrictHostKeyChecking=yes \
+        "$ENV_FILE" "$target:$remote_dir/.env.next"
+      ssh -p "$SSH_PORT" -i "$SSH_PRIVATE_KEY_FILE" -o StrictHostKeyChecking=yes "$target" \
+        "cd '$remote_dir' && chmod 600 .env.next && mv -f .env.next .env && docker compose --env-file .env config --quiet && docker compose --env-file .env --profile setup run --rm model-setup && docker compose --env-file .env build api ui && docker compose --env-file .env up -d api ui"

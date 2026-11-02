@@ -1,10 +1,15 @@
-stages: [test, frontend]
+stages:
+  - test
+  - frontend
+  - deploy
+
 python-tests:
   stage: test
   image: python:3.11-slim
   script:
     - pip install -r backend/requirements-dev.txt
     - PYTHONPATH=backend pytest -q backend/tests
+
 frontend-build:
   stage: frontend
   image: node:22-alpine
@@ -12,3 +17,7 @@ frontend-build:
     - cd frontend
     - npm install --no-audit --no-fund
     - npm run build
+
+# Production deployment remains manual until real CPU/model acceptance tests pass.
+include:
+  - local: '/.gitlab-ci-prod.yml'
