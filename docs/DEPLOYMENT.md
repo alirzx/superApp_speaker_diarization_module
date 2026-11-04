@@ -1,76 +1,88 @@
-# Local and server deployment
+# Speaker Diarization: local and GitLab deployment
 
-## Service layout
+## Verified build result and recent failure
 
-Host API port **8003** -> container port 8000. Host UI port **8084** -> container port 8080.
-Both host binds default to 127.0.0.1; never change teammates' ports without agreement.
-Frontend Nginx proxies /api/* to the internal api:8000 container.
-The CPU inference uses NVIDIA NeMo-Speech.cpp with pinned GGUF weights.
-The standalone CLI is loaded for each request, so benchmark cold/warm latency before claiming real-time support.
+The GitLab log for commit 1e1c895 shows **both API and UI Docker images built**.
+The failure happened when Docker marked the API unhealthy. The old Compose
+had `model-setup` behind a profile and the DevOps job runs only
+`git pull origin main && docker compose up --build -d`. Consequently a
+fresh /models volume was not provisioned. API startup validates the model and
+manifest; missing files prevent startup.
 
-## Initial development setup
+The Compose file now makes `model-setup` an unprofiled one-shot prerequisite
+for API: **model-setup succeeds -> API becomes healthy -> UI starts**.
+It installs the official pinned GGUF into persistent `model_cache` and
+verifies SHA256 before publishing manifest. On subsequent deployments,
+an intact cached model avoids downloading again. An unavailable Hugging Face
+endpoint produces an explicit failed setup step instead of a mysterious
+API health failure. This is the expected behavior; no bypass is allowed.
+
+## Ports and network binding
+
+| Service | Docker internal | Local .env | Server .env |
+|---|---|---|---|
+| API | api:8000 | 127.0.0.1:8003 | 127.0.0.1:8003 |
+| UI | ui:8080 | 127.0.0.1:8084 | 192.168.4.209:8084 |
+
+The server MUST own address 192.168.4.209. UI URLs for clients on the approved
+LAN: http://192.168.4.209:8084. Permit inbound TCP 8084 from approved
+networks only. Nginx proxies same-origin /api requests to api:8000.
+Do NOT expose the API port to the public internet. Nginx injects a shared
+API token; this is not per-user authorization. Add access controls (SSO,
+authenticating gateway, restricted VPN) and HTTPS for production exposure.
+
+## Local startup
 
 ```bash
-cp .env.example .env
+cp .env.example .env   # preserve existing .env and API_TOKEN if already configured
 chmod 600 .env
-# Generate an environment-specific API_TOKEN for real access-control tests:
-# openssl rand -hex 32
 docker compose --env-file .env config --quiet
-make model
-make build
-make up
+docker compose --env-file .env up --build -d
+docker compose --env-file .env ps -a
+docker compose --env-file .env logs --tail=100 model-setup api ui
 curl -f http://127.0.0.1:8003/health/ready
 ```
 
-UI: http://127.0.0.1:8084. Use curl with X-API-Key for direct authenticated API calls.
-Do not commit .env or recordings. Model files live in the Docker named volume, not the repo.
+Optionally prewarm/download the model:
+`docker compose --env-file .env run --build --rm model-setup`.
+This is not required for CI because Compose enforces the prerequisite itself.
 
-## Production variables and CI/CD
+## CI deployment (DevOps-owned, not modified by this change)
 
-Production requires APP_ENV=production, a unique random API_TOKEN (>=32 chars),
-and the same token inside the API and UI Nginx containers (Compose passes it to both).
-Copy .env.production.example to a private deploy file and replace its placeholder;
-never put the real token in Git.
-Default CPU_THREADS=2, MAX_CONCURRENT_INFERENCE=1, API_CPUS=2.0,
-API_MEMORY=1500m, UI_CPUS=0.5 and UI_MEMORY=256m are **unverified starting limits**.
-Tune after real CPU tests.
+The actual executable pipeline is `.gitlab-ci.yml` and runs on branch
+`main`. It copies GitLab File variable `ENV_FILE` to the deployment host,
+then runs `git pull origin main && docker compose up --build -d`. Its
+shell runner also requires `SSH_PRIVATE_KEY`, `SSH_USER`, `SSH_PORT`
+and `VM_IPADDRESS`. The unrelated `.gitlab-ci-prod.yml` is NOT imported
+by the current pipeline and must not be assumed active. Coordinate any CI
+template changes with DevOps.
 
-`.gitlab-ci.yml` includes `.gitlab-ci-prod.yml`; deploy-production is intentionally
-**manual on main** and uses deployment runner tags linux/bina/shell.
-Protected CI/CD variables required:
+Production `ENV_FILE` must include all variables in
+`.env.production.example`, particularly APP_ENV=production,
+a strong unique API_TOKEN, API_PORT=8003, UI_BIND_IP=192.168.4.209,
+and UI_PORT=8084. Do not place private keys or tokens in Git.
 
-- SSH_PRIVATE_KEY_FILE: GitLab **File** variable with a deployment-only private SSH key.
-- SSH_KNOWN_HOSTS: GitLab **File** variable with preverified SSH host keys.
-- ENV_FILE: GitLab **File** variable whose contents are the complete production .env.
-- SSH_USER, SSH_PORT, VM_IPADDRESS: protected text variables.
-
-The deploy target is `/opt/apps/ai-service/speaker_diarization_module`.
-Pre-provision that directory as a clone of the organization's GitLab repository,
-with origin pointing to GitLab, and allow the deployment user to use Docker.
-A protected main branch is required to expose protected variables.
-The job updates main with `git merge --ff-only origin/main`, installs the
-.env securely, prepares the pinned model, builds both images, and starts api/ui.
-The runner requires ssh/scp and Docker on the target; the server requires
-GitLab/Hub access or approved mirrors at build/setup time. This CI job
-does **not** silently initialize a new repository.
-
-Before enabling server deployment, validate the native binary on CPU, benchmark
-Persian and English recordings, check DER, p95 latency, RSS, and model licensing.
-The current production job is a manual bootstrap/deployment recipe, not
-evidence that model inference was tested or a release passed acceptance gates.
-
-## Validation
+## Server diagnosis commands
 
 ```bash
-PYTHONPATH=backend pytest -q backend/tests
+cd /opt/apps/ai-service/speaker_diarization_module
 docker compose --env-file .env config --quiet
-docker compose --env-file .env --profile setup run --rm model-setup
-docker compose --env-file .env build api ui
-docker compose --env-file .env up -d api ui
-docker compose --env-file .env ps
+docker compose --env-file .env ps -a
+docker compose --env-file .env logs --no-color --tail=200 model-setup api ui
+docker inspect superapp-speaker-diarization-api-1 --format '{{json .State.Health}}'
+# Re-run provisioning manually if setup reports network or SHA issues:
+docker compose --env-file .env run --rm model-setup
+# Verify model exists without printing secrets:
+docker compose --env-file .env run --rm --no-deps api python -c "from app.config import Settings;from app.services.model_manager import verify;s=Settings();verify(s.model_path,s.manifest_path);print('Model SHA256 OK')"
 curl -f http://127.0.0.1:8003/health/ready
 ```
 
-Do not disable SHA256 verification to work around a network failure.
-If build access is blocked, mirror dependencies and model artifacts via a
-trusted internal registry or cache and retain immutable pins.
+A missing model, checksum mismatch, insufficient disk, access to Hugging Face,
+bad CPU runtime or a production token below 32 characters can all stop API
+startup. **The log provided did not include API application logs**, so the
+exact historical exception is not confirmed.
+
+Never run `docker compose down -v` during ordinary deployments: it
+would erase the persistent model cache. Monitor `model-setup` exit code,
+API health status, UI health and endpoint response separately. Model
+quality and RTF for Persian/English have NOT been benchmarked yet.

@@ -1,8 +1,28 @@
 name: superapp-speaker-diarization
 services:
+  # Model provisioning is a REQUIRED one-shot dependency. The DevOps pipeline
+  # runs 'docker compose up --build -d' without any setup profile.
+  model-setup:
+    build: {context: ., dockerfile: backend/Dockerfile.setup}
+    restart: "no"
+    init: true
+    environment:
+      MODEL_DIR: /models
+      HF_HOME: ${HF_HOME:-/models/.cache}
+      HF_HUB_ETAG_TIMEOUT: ${HF_HUB_ETAG_TIMEOUT:-30}
+      HF_HUB_DOWNLOAD_TIMEOUT: ${HF_HUB_DOWNLOAD_TIMEOUT:-300}
+      HF_HUB_DISABLE_TELEMETRY: '1'
+    volumes: [model_cache:/models]
+    networks: [internal]
+    pids_limit: 64
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+
   api:
     build: {context: ., dockerfile: backend/Dockerfile}
     image: superapp-speaker-diarization-api:local
+    depends_on:
+      model-setup: {condition: service_completed_successfully}
     restart: unless-stopped
     init: true
     read_only: true
@@ -10,6 +30,8 @@ services:
     environment:
       APP_ENV: ${APP_ENV:-development}
       API_TOKEN: ${API_TOKEN:-}
+      MODEL_PATH: ${MODEL_PATH:-/models/Nemotron-3-Diarization.q8_0.gguf}
+      MODEL_MANIFEST: ${MODEL_MANIFEST:-/models/manifest.json}
       CPU_THREADS: ${CPU_THREADS:-2}
       OMP_NUM_THREADS: ${CPU_THREADS:-2}
       OPENBLAS_NUM_THREADS: '1'
@@ -35,6 +57,7 @@ services:
       timeout: 8s
       start_period: 120s
       retries: 3
+
   ui:
     build: {context: ., dockerfile: frontend/Dockerfile}
     image: superapp-speaker-diarization-ui:local
@@ -54,11 +77,12 @@ services:
       - /var/run:size=4m
       - /tmp:size=8m
     networks: [internal]
-  model-setup:
-    profiles: [setup]
-    build: {context: ., dockerfile: backend/Dockerfile.setup}
-    environment: {MODEL_DIR: /models, HF_HOME: /models/.cache}
-    volumes: [model_cache:/models]
-    networks: [internal]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 8s
+      start_period: 20s
+      retries: 3
+
 networks: {internal: {driver: bridge}}
 volumes: {model_cache: {}}

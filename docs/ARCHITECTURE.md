@@ -1,36 +1,41 @@
-# Architecture
+# CPU-first speaker diarization architecture
 
 ```text
-User audio -> React + Nginx /api -> FastAPI /v1/diarize
-          -> upload validation -> ffmpeg mono PCM16 16kHz
-          -> NVIDIA NeMo-Speech.cpp native CLI --device cpu
-          -> Nemotron 3 Diarization Q8 GGUF
-          -> segment schema validation -> JSON / RTTM -> speaker timeline
+GitLab CI: git pull origin main && docker compose up --build -d
+                                    |
+                       model-setup (one-shot)
+                          HF pinned download
+                          SHA256 / manifest
+                                    |
+                   Docker named volume model_cache
+                                    | (read-only)
+                                    v
+Browser -> UI Nginx -> API FastAPI -> upload validation -> ffmpeg WAV 16 kHz
+                             -> nemo-speech diarize --device cpu
+                             -> speaker segments -> normalized JSON or RTTM
 ```
 
-Five API paths: /health/live, /health/ready, /v1/models,
-POST /v1/diarize, /metrics. The API uses one Uvicorn worker and
-a concurrency semaphore (default 1). Speaker IDs are local anonymous
-slots; up to eight speaker slots, overlapping segments preserved.
-pyannote and sherpa-onnx files are placeholder backends, not active models.
+The API starts only after model-setup exits successfully. API readiness
+checks that native CLI exists and the pinned GGUF + manifest passed SHA256
+validation at startup. UI starts after API health succeeds. Model cache
+persists across container recreation and deployments; no model network
+access occurs during inference.
 
-## Runtime and model lifecycle
+Native source: NVIDIA/NeMo-Speech.cpp @ 20999cc921d2b14aa58708f61756a8b2e787ba20.
+Model: nvidia/Nemotron-3-Diarization, revision
+f667ed73aee57d40cc39428eb768b4fd87a0a29e,
+Nemotron-3-Diarization.q8_0.gguf, SHA256
+08456d9e22cd9a323c0364d98375f3746d6e68507ebb705cd46438c534c7a3a1.
+The downloaded file and manifest are stored in /models; the Hugging Face
+cache uses /models/.cache (persistent named volume).
 
-- Separate setup container retrieves pinned NVIDIA GGUF from Hugging Face
-  and verifies immutable SHA256. Mounted /models volume is read-only in API.
-- Native source pinned to NeMo-Speech.cpp commit
-  20999cc921d2b14aa58708f61756a8b2e787ba20.
-- Native builder and runtime share the Debian Bookworm ABI family.
-  CMake installs the complete native binaries and shared libraries into
-  /opt/nemo-speech; runtime LD_LIBRARY_PATH points to that installation.
-- API does not perform downloads per request. It validates model manifest
-  and SHA256 at startup.
-- Each request launches a separate native CLI process: this incurs
-  potential repeated model loading. Future persistent C ABI/server support
-  requires separate profiling and integration tests.
-- Audio is decoded in an ephemeral request-local directory and deleted.
-  Upload byte limit, decoded duration limit, queue timeout and inference
-  subprocess timeout are all applied.
+API input accepts bounded audio files, generates temporary 16-kHz mono WAV,
+and calls the native CLI in a subprocess per request. Speaker output is
+validated, sorted, and exported in JSON or RTTM. Streaming APIs and speaker
+identification are not implemented. Python and native components are
+CPU-only and concurrency is bounded by a semaphore. This is not a
+validated real-time latency configuration.
 
-The CPU/RAM/concurrency settings are initial guesses requiring actual
-measurements; no real Persian/English performance benchmark is claimed.
+Service binds remain team-approved: local API 8003, LAN UI 8084.
+The production UI host IP is set by UI_BIND_IP in the server's .env.
+The optional pyannote and sherpa-onnx adapters are placeholders, not active.
