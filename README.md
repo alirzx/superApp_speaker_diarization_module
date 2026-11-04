@@ -4,10 +4,13 @@ CPU-first, stand-alone diarization for Persian and English audio using
 **NVIDIA Nemotron 3 Diarization** (Q8 GGUF) with native **NeMo-Speech.cpp**.
 Identifies *speaker turns*, not the real identity of any speaker.
 
-**Current status:** the server built both API and UI images, but an earlier
-deployment stopped at API health check. This update makes the first-use model
-download mandatory before API startup. A successful rebuilt deployment and
-real-audio inference are **not yet confirmed**.
+**Current status:** the deployment now builds API/UI and reports API healthy,
+but the server UI was restarting with an Nginx permission error. This revision
+matches the working non-root Nginx layout from the Persian sentiment module:
+UID 101 owns writable tmpfs mounts, /tmp holds the generated configuration
+and PID, and no elevated Linux capabilities are granted. The repaired image
+still needs a fresh deployment and HTTP health verification. Real-audio CPU
+inference remains unbenchmarked.
 
 ## Components
 
@@ -83,3 +86,17 @@ resource limits, CI runtime and authenticated LAN exposure.
 See [Deployment](docs/DEPLOYMENT.md), [Architecture](docs/ARCHITECTURE.md),
 [API](docs/API.md), [Security](docs/SECURITY.md), [Model provenance](docs/MODEL_PROVENANCE.md),
 and [Test plan](docs/TEST_PLAN.md).
+
+## UI permission fix and healthcheck
+
+UI runs as the Alpine `nginx` user (UID/GID 101), with a read-only image
+and writable UID-101 tmpfs mounts for Nginx cache, PID and generated config.
+The entrypoint safely renders only `API_TOKEN` to `/tmp/nginx.conf`, tests
+syntax, and starts Nginx without root privileges. Health endpoint:
+`GET /healthz` on UI port 8080 (host 8084). Verify after deployment:
+
+```bash
+docker compose ps -a
+docker compose logs --tail=100 ui
+curl -f http://192.168.4.209:8084/healthz
+```

@@ -63,7 +63,9 @@ services:
     image: superapp-speaker-diarization-ui:local
     restart: unless-stopped
     depends_on: {api: {condition: service_healthy}}
-    environment: {API_TOKEN: "${API_TOKEN:-}"}
+    environment:
+      API_TOKEN: "${API_TOKEN:-}"
+      APP_ENV: ${APP_ENV:-development}
     cpus: ${UI_CPUS:-0.5}
     mem_limit: ${UI_MEMORY:-256m}
     pids_limit: 64
@@ -72,13 +74,13 @@ services:
     ports: ["${UI_BIND_IP:-127.0.0.1}:${UI_PORT:-8084}:8080"]
     read_only: true
     tmpfs:
-      - /etc/nginx/conf.d:size=1m
-      - /var/cache/nginx:size=16m
-      - /var/run:size=4m
-      - /tmp:size=8m
+      - /etc/nginx/conf.d:rw,size=1m,uid=101,gid=101,mode=0755
+      - /var/cache/nginx:rw,size=16m,uid=101,gid=101,mode=0755
+      - /var/run:rw,size=4m,uid=101,gid=101,mode=0755
+      - /tmp:rw,size=8m,uid=101,gid=101,mode=0700
     networks: [internal]
     healthcheck:
-      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8080/"]
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8080/healthz"]
       interval: 30s
       timeout: 8s
       start_period: 20s

@@ -75,3 +75,43 @@ model-manifest identity and the native executable. Do not disable SHA256 checks.
 **Do not use `docker compose down -v`** because it would erase the model
 cache. CPU throughput, DER on Persian/English and production release testing
 remain unverified.
+
+## UI Nginx permission repair (non-root)
+
+The API may be healthy while the UI restarts with `Operation not permitted`
+because the official Nginx image's root entrypoint attempts cache setup or
+privilege transitions when Compose has `cap_drop: [ALL]` and a read-only FS.
+We follow the Persian sentiment module's proven non-root design instead of
+re-enabling CHOWN/SETUID/SETGID or running Nginx as root.
+
+- The frontend image installs `gettext`, prepares writable directories at
+  build time, and runs with `USER nginx` (Alpine UID/GID 101).
+- Compose mounts `/etc/nginx/conf.d`, `/var/cache/nginx`, `/var/run`,
+  and `/tmp` as tmpfs with `uid=101,gid=101`. These options matter:
+  a tmpfs mount hides image-layer chown ownership.
+- Custom `ops/start-nginx.sh` validates the production token, renders only
+  `API_TOKEN` into `/tmp/nginx.conf` with restrictive umask, checks Nginx
+  syntax and execs Nginx.
+- The full Nginx configuration sets `pid /tmp/nginx.pid`, listens on 8080,
+  and provides `GET /healthz` for Docker's UI healthcheck. Docker's DNS is
+  used for API proxying; uploads are not buffered to the limited cache tmpfs.
+- CI, API, model cache, ports (8003/8084) and server `UI_BIND_IP`
+  (192.168.4.209) remain unchanged.
+
+After GitLab deploys the updated commit, on the server:
+
+```bash
+cd /opt/apps/ai-service/speaker_diarization_module
+docker compose --env-file .env config --quiet
+docker compose --env-file .env ps -a
+docker compose --env-file .env logs --tail=120 ui
+docker compose --env-file .env exec -T ui nginx -t -c /tmp/nginx.conf
+docker compose --env-file .env port ui 8080
+curl --noproxy '*' -fsS http://192.168.4.209:8084/healthz
+curl --noproxy '*' -fsSI http://192.168.4.209:8084/
+curl --noproxy '*' -fsS http://192.168.4.209:8084/api/health/ready
+```
+
+If Nginx is now healthy but another workstation cannot reach the UI, next
+check the `ENV_FILE` in GitLab, published host address, firewall, and VPN
+routing. No new API token is needed if the existing production token is valid.
