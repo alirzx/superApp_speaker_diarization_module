@@ -3,7 +3,12 @@ services:
   # Model provisioning is a REQUIRED one-shot dependency. The DevOps pipeline
   # runs 'docker compose up --build -d' without any setup profile.
   model-setup:
-    build: {context: ., dockerfile: backend/Dockerfile.setup}
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.setup
+      args:
+        PIP_PRIMARY_INDEX_URL: ${PIP_PRIMARY_INDEX_URL:-https://package-mirror.liara.ir/repository/pypi/simple}
+        PIP_FALLBACK_INDEX_URL: ${PIP_FALLBACK_INDEX_URL:-https://mirror2.chabokan.net/pypi/simple/}
     restart: "no"
     init: true
     environment:
@@ -19,7 +24,12 @@ services:
     cap_drop: [ALL]
 
   api:
-    build: {context: ., dockerfile: backend/Dockerfile}
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        PIP_PRIMARY_INDEX_URL: ${PIP_PRIMARY_INDEX_URL:-https://package-mirror.liara.ir/repository/pypi/simple}
+        PIP_FALLBACK_INDEX_URL: ${PIP_FALLBACK_INDEX_URL:-https://mirror2.chabokan.net/pypi/simple/}
     image: superapp-speaker-diarization-api:local
     depends_on:
       model-setup: {condition: service_completed_successfully}

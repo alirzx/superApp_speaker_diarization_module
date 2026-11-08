@@ -21,3 +21,26 @@ def test_ports_and_healthchecks_remain_compatible_with_team():
     assert "healthcheck" in services["ui"]
     assert "MODEL_PATH" in services["api"]["environment"]
     assert "MODEL_MANIFEST" in services["api"]["environment"]
+
+
+def test_pip_mirror_build_args_all_python_images():
+    services = COMPOSE["services"]
+    for service in ("api", "model-setup"):
+        args = services[service]["build"]["args"]
+        assert "package-mirror.liara.ir/repository/pypi/simple" in args["PIP_PRIMARY_INDEX_URL"]
+        assert "mirror2.chabokan.net/pypi/simple" in args["PIP_FALLBACK_INDEX_URL"]
+    # The UI uses npm + Nginx, not Python requirements.
+    for filename in ("backend/Dockerfile", "backend/Dockerfile.setup"):
+        dockerfile = (ROOT / filename).read_text()
+        assert "PIP_PRIMARY_INDEX_URL" in dockerfile
+        assert "PIP_FALLBACK_INDEX_URL" in dockerfile
+        assert '--index-url "$PIP_PRIMARY_INDEX_URL"' in dockerfile
+        assert '--index-url "$PIP_FALLBACK_INDEX_URL"' in dockerfile
+        assert "pypi.org" not in dockerfile
+        assert "--extra-index-url" not in dockerfile
+
+def test_ui_bind_not_forced_to_loopback():
+    ui = COMPOSE["services"]["ui"]
+    assert ui["ports"] == ["${UI_BIND_IP:-127.0.0.1}:${UI_PORT:-8084}:8080"]
+    prod = (ROOT / ".env.production.example").read_text()
+    assert "UI_BIND_IP=192.168.4.209" in prod

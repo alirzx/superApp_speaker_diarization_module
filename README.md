@@ -100,3 +100,17 @@ docker compose ps -a
 docker compose logs --tail=100 ui
 curl -f http://192.168.4.209:8084/healthz
 ```
+
+## Regional Python package mirrors
+
+Docker builds of the native CMake builder, FastAPI backend and model-setup
+use Liara as primary and Chabokan as the sequential fallback for Python
+package installation, with explicit `--index-url` and bounded retries.
+The build args `PIP_PRIMARY_INDEX_URL` / `PIP_FALLBACK_INDEX_URL` are
+set in `docker-compose.yml` and can be overridden in local/server `.env`.
+The audio model still downloads via Hugging Face, with persistent GGUF
+cache: pip mirrors do not speed up CPU inference or fix UI request timeouts.
+
+The server UI binds to `UI_BIND_IP=192.168.4.209`, `UI_PORT=8084`
+through the host's production `.env`; API remains loopback-only. Ensure
+the actual GitLab File variable `ENV_FILE` contains these values.

@@ -115,3 +115,56 @@ curl --noproxy '*' -fsS http://192.168.4.209:8084/api/health/ready
 If Nginx is now healthy but another workstation cannot reach the UI, next
 check the `ENV_FILE` in GitLab, published host address, firewall, and VPN
 routing. No new API token is needed if the existing production token is valid.
+
+## Python package install mirrors (build stage only)
+
+The CPU builder needs `cmake==3.30.9`, the API image installs
+`backend/requirements.txt`, and the one-shot model-setup image installs
+`huggingface-hub==0.34.4`. All three pip install sites now attempt the
+Liara mirror first and retry using Chabokan only if Liara fails:
+
+- `PIP_PRIMARY_INDEX_URL=https://package-mirror.liara.ir/repository/pypi/simple`
+- `PIP_FALLBACK_INDEX_URL=https://mirror2.chabokan.net/pypi/simple/`
+
+Values are passed from the host `.env` into both Python image Docker builds
+as build args. Each pip call explicitly sets `--index-url`, so it does not
+implicitly query the default PyPI index. We intentionally avoid
+`--extra-index-url`: it is not prioritized failover. pip operations use
+15-second connection timeout, 2 retries and independent BuildKit caches for
+successful wheel downloads. Both mirrors must have the pinned packages or
+an approved internal mirror must be supplied as a build argument.
+
+**This is not a runtime inference timeout fix.** Package indexes are used
+when Docker builds new Python images. The GGUF model is downloaded from
+Hugging Face by `model-setup` (unless verified in the persistent /models
+volume); package mirrors do not mirror the GGUF. npm, Debian apt and the
+pinned GitHub NeMo native source use separate providers.
+
+A running UI returning HTTP 503 usually means the API inference queue
+was unavailable/occupied (default 1 concurrent, 10-second queue timeout),
+while a browser `NetworkError` might be an interrupted proxy connection,
+container OOM/restart, client VPN, or other network failure. Inspect
+the request Status, response payload, API logs and memory before changing
+inference timeout or worker count. Do not treat build mirrors as a fix for
+an audio processing outage.
+
+## LAN / VPN UI check
+
+Server `ENV_FILE` (GitLab **File** variable) must retain
+`UI_BIND_IP=192.168.4.209`, `UI_PORT=8084`.
+The existing Compose maps that host address to Nginx's container port 8080
+and keeps the API on `127.0.0.1:8003`. Verify, without displaying tokens:
+
+```bash
+cd /opt/apps/ai-service/speaker_diarization_module
+grep -E '^(API_BIND_IP|API_PORT|UI_BIND_IP|UI_PORT)=' .env
+docker compose port ui 8080
+docker compose ps -a
+curl --noproxy '*' -fsS http://192.168.4.209:8084/healthz
+curl --noproxy '*' -fsS http://192.168.4.209:8084/api/health/ready
+```
+
+If local server curl works but a LAN/VPN laptop fails, examine the approved
+firewall ACL, routing and VPN split-tunnel policies. The source code cannot
+ensure inter-network reachability. Do not bind the API publicly as a
+workaround. No changes to DevOps-owned CI templates are needed.

@@ -1,5 +1,15 @@
+# syntax=docker/dockerfile:1
 FROM python:3.11-slim-bookworm
-RUN pip install --no-cache-dir huggingface-hub==0.34.4
+ARG PIP_PRIMARY_INDEX_URL=https://package-mirror.liara.ir/repository/pypi/simple
+ARG PIP_FALLBACK_INDEX_URL=https://mirror2.chabokan.net/pypi/simple
+RUN --mount=type=cache,id=superapp-diar-pip-setup-py311,target=/root/.cache/pip,sharing=locked \
+    set -eu; \
+    if ! python -m pip install --disable-pip-version-check --timeout 15 --retries 2 \
+        --index-url "$PIP_PRIMARY_INDEX_URL" huggingface-hub==0.34.4; then \
+      echo 'Liara mirror failed while installing setup dependencies; trying Chabokan'; \
+      python -m pip install --disable-pip-version-check --timeout 15 --retries 2 \
+        --index-url "$PIP_FALLBACK_INDEX_URL" huggingface-hub==0.34.4; \
+    fi
 COPY backend/app /app/app
 COPY backend/scripts/prepare_models.py /app/setup.py
 WORKDIR /app
