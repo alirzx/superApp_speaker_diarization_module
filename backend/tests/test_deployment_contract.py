@@ -44,3 +44,33 @@ def test_ui_bind_not_forced_to_loopback():
     assert ui["ports"] == ["${UI_BIND_IP:-127.0.0.1}:${UI_PORT:-8084}:8080"]
     prod = (ROOT / ".env.production.example").read_text()
     assert "UI_BIND_IP=192.168.4.209" in prod
+
+
+def test_debian_apt_mirrors_apply_to_both_build_stages():
+    api_args = COMPOSE["services"]["api"]["build"]["args"]
+    for key in (
+        "APT_PRIMARY_DEBIAN_URL",
+        "APT_PRIMARY_SECURITY_URL",
+        "APT_FALLBACK_DEBIAN_URL",
+        "APT_FALLBACK_SECURITY_URL",
+    ):
+        assert key in api_args
+        assert api_args[key].startswith("${")
+        assert "https://" in api_args[key]
+    dockerfile = (ROOT / "backend/Dockerfile").read_text()
+    assert dockerfile.count("COPY ops/install-debian-packages.sh") == 2
+    assert dockerfile.count("sh /usr/local/bin/install-debian-packages") == 2
+    assert "RUN apt-get update && apt-get install" not in dockerfile
+    script = (ROOT / "ops/install-debian-packages.sh").read_text()
+    assert "APT::Update::Error-Mode=any" in script
+    assert "Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg" in script
+    assert "elif attempt fallback" in script
+    assert "shift 3" in script
+    assert "trusted=yes" not in script
+    assert "AllowInsecureRepositories" not in script
+
+def test_ui_server_bind_unchanged_after_build_mirror_fix():
+    ui = COMPOSE["services"]["ui"]
+    assert ui["ports"] == ["${UI_BIND_IP:-127.0.0.1}:${UI_PORT:-8084}:8080"]
+    prod = (ROOT / ".env.production.example").read_text()
+    assert "UI_BIND_IP=192.168.4.209" in prod

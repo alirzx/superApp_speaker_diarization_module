@@ -114,3 +114,15 @@ cache: pip mirrors do not speed up CPU inference or fix UI request timeouts.
 The server UI binds to `UI_BIND_IP=192.168.4.209`, `UI_PORT=8084`
 through the host's production `.env`; API remains loopback-only. Ensure
 the actual GitLab File variable `ENV_FILE` contains these values.
+
+## Debian APT mirror failover
+
+Build-stage `apt-get` now uses a shared helper in
+`ops/install-debian-packages.sh`, replacing the unavailable
+`deb.debian.org:80` sources with signed Debian Bookworm repositories over
+HTTPS. It attempts a primary mirror, then a fallback, and fails explicitly
+if neither can be reached. Both mirrors are configurable using
+`APT_PRIMARY_DEBIAN_URL`, `APT_PRIMARY_SECURITY_URL`,
+`APT_FALLBACK_DEBIAN_URL`, and `APT_FALLBACK_SECURITY_URL`
+(Docker build args in Compose). PyPI still uses Liara/Chabokan independently.
+No change to GitLab CI, API/UI ports, Nginx bind, or model cache.

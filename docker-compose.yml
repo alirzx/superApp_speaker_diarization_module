@@ -9,6 +9,10 @@ services:
       args:
         PIP_PRIMARY_INDEX_URL: ${PIP_PRIMARY_INDEX_URL:-https://package-mirror.liara.ir/repository/pypi/simple}
         PIP_FALLBACK_INDEX_URL: ${PIP_FALLBACK_INDEX_URL:-https://mirror2.chabokan.net/pypi/simple/}
+        APT_PRIMARY_DEBIAN_URL: ${APT_PRIMARY_DEBIAN_URL:-https://mirror.metanet.ch/debian}
+        APT_PRIMARY_SECURITY_URL: ${APT_PRIMARY_SECURITY_URL:-https://mirror.metanet.ch/debian-security}
+        APT_FALLBACK_DEBIAN_URL: ${APT_FALLBACK_DEBIAN_URL:-https://mirrors.huaweicloud.com/repository/debian}
+        APT_FALLBACK_SECURITY_URL: ${APT_FALLBACK_SECURITY_URL:-https://mirrors.huaweicloud.com/repository/debian-security}
     restart: "no"
     init: true
     environment:
@@ -30,6 +34,10 @@ services:
       args:
         PIP_PRIMARY_INDEX_URL: ${PIP_PRIMARY_INDEX_URL:-https://package-mirror.liara.ir/repository/pypi/simple}
         PIP_FALLBACK_INDEX_URL: ${PIP_FALLBACK_INDEX_URL:-https://mirror2.chabokan.net/pypi/simple/}
+        APT_PRIMARY_DEBIAN_URL: ${APT_PRIMARY_DEBIAN_URL:-https://mirror.metanet.ch/debian}
+        APT_PRIMARY_SECURITY_URL: ${APT_PRIMARY_SECURITY_URL:-https://mirror.metanet.ch/debian-security}
+        APT_FALLBACK_DEBIAN_URL: ${APT_FALLBACK_DEBIAN_URL:-https://mirrors.huaweicloud.com/repository/debian}
+        APT_FALLBACK_SECURITY_URL: ${APT_FALLBACK_SECURITY_URL:-https://mirrors.huaweicloud.com/repository/debian-security}
     image: superapp-speaker-diarization-api:local
     depends_on:
       model-setup: {condition: service_completed_successfully}

@@ -168,3 +168,48 @@ If local server curl works but a LAN/VPN laptop fails, examine the approved
 firewall ACL, routing and VPN split-tunnel policies. The source code cannot
 ensure inter-network reachability. Do not bind the API publicly as a
 workaround. No changes to DevOps-owned CI templates are needed.
+
+## Debian APT outage (Nov 2026): signed HTTPS mirror failover
+
+A failed GitLab API image build reported repeated TCP connection failures to
+`http://deb.debian.org:80`, followed by `Unable to locate package ffmpeg/git`.
+This is an **APT repository reachability** problem, not a Python PyPI error,
+model cache error or speaker diarization inference failure.
+
+The API Dockerfile has two Debian Bookworm stages (native builder and runtime).
+Both now invoke the same `ops/install-debian-packages.sh` helper:
+
+1. Replace the image's original Debian sources with explicit HTTPS repositories
+   using the **Debian archive keyring** and signed `InRelease` metadata.
+2. Try the primary Debian and Debian-security mirrors for `bookworm`,
+   `bookworm-updates` and `bookworm-security`.
+3. Treat any `apt-get update` index error as a failure
+   (`APT::Update::Error-Mode=any`), rather than using stale/empty lists.
+4. If either index refresh or package download fails, switch both main and
+   security repositories to fallback mirrors and retry once. Timeouts are
+   bounded; APT fails clearly if both routes are inaccessible.
+
+Default primary Debian mirror: `https://mirror.metanet.ch/debian`
+Security: `https://mirror.metanet.ch/debian-security`
+
+Default fallback Debian mirror: `https://mirrors.huaweicloud.com/repository/debian`
+Security: `https://mirrors.huaweicloud.com/repository/debian-security`
+
+The deployment server's actual reachability of these HTTPS endpoints has not
+been verified. All four URLs are **optional Docker build arguments** with
+defaults; override them through GitLab's File-type `ENV_FILE` or server
+`.env` if your network has a trusted internal Debian package mirror.
+The service continues to verify Debian package signatures with its stock
+keyring, not with `trusted=yes`. Do not point to an untrusted package server.
+
+**Important:** Liara/Chabokan remain the only Python package index choices.
+Debian APT mirrors are entirely separate, and GitHub source checkout, Docker
+base images, npm, and Hugging Face may each require independent egress or an
+approved internal mirror. A failed internet connection may still stop the
+build even with these changes. No CI template edits are required.
+
+For the next GitLab build check the output containing:
+`Trying signed Debian Bookworm APT mirror: primary` or `fallback`.
+If both attempts fail, DevOps must supply reachable HTTPS APT mirrors or
+configure network/proxy rules. Do not use `docker compose down -v`: the
+persistent GGUF model cache should be preserved.

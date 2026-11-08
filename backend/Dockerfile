@@ -4,9 +4,13 @@ FROM python:3.11-slim-bookworm AS native-builder
 ARG NEMO_CPP_REF=20999cc921d2b14aa58708f61756a8b2e787ba20
 ARG PIP_PRIMARY_INDEX_URL=https://package-mirror.liara.ir/repository/pypi/simple
 ARG PIP_FALLBACK_INDEX_URL=https://mirror2.chabokan.net/pypi/simple/
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git ca-certificates build-essential ninja-build pkg-config libsentencepiece-dev \
-    && rm -rf /var/lib/apt/lists/*
+ARG APT_PRIMARY_DEBIAN_URL=https://mirror.metanet.ch/debian
+ARG APT_PRIMARY_SECURITY_URL=https://mirror.metanet.ch/debian-security
+ARG APT_FALLBACK_DEBIAN_URL=https://mirrors.huaweicloud.com/repository/debian
+ARG APT_FALLBACK_SECURITY_URL=https://mirrors.huaweicloud.com/repository/debian-security
+COPY ops/install-debian-packages.sh /usr/local/bin/install-debian-packages
+RUN sh /usr/local/bin/install-debian-packages \
+    git ca-certificates build-essential ninja-build pkg-config libsentencepiece-dev
 # Install CMake via the same regional index failover used by other SuperApp modules.
 RUN --mount=type=cache,id=superapp-diar-pip-cmake-py311,target=/root/.cache/pip,sharing=locked \
     set -eu; \
@@ -28,9 +32,13 @@ RUN scripts/configure.sh cpu-diar \
 FROM python:3.11-slim-bookworm
 ARG PIP_PRIMARY_INDEX_URL=https://package-mirror.liara.ir/repository/pypi/simple
 ARG PIP_FALLBACK_INDEX_URL=https://mirror2.chabokan.net/pypi/simple
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg ca-certificates libstdc++6 libgomp1 libsentencepiece0 \
-    && rm -rf /var/lib/apt/lists/*
+ARG APT_PRIMARY_DEBIAN_URL=https://mirror.metanet.ch/debian
+ARG APT_PRIMARY_SECURITY_URL=https://mirror.metanet.ch/debian-security
+ARG APT_FALLBACK_DEBIAN_URL=https://mirrors.huaweicloud.com/repository/debian
+ARG APT_FALLBACK_SECURITY_URL=https://mirrors.huaweicloud.com/repository/debian-security
+COPY ops/install-debian-packages.sh /usr/local/bin/install-debian-packages
+RUN sh /usr/local/bin/install-debian-packages \
+    ffmpeg ca-certificates libstdc++6 libgomp1 libsentencepiece0
 COPY --from=native-builder /opt/nemo-speech /opt/nemo-speech
 ENV PATH="/opt/nemo-speech/bin:${PATH}" \
     LD_LIBRARY_PATH="/opt/nemo-speech/lib:/opt/nemo-speech/lib64" \
